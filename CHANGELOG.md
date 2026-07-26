@@ -7,8 +7,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 ## [Unreleased]
 
 ### Added
-- `AGENTS.MD` — comprehensive guide for AI agents working with the codebase
-- `CHANGELOG.md` — this file
 - `scripts/check-upstream.sh` — safe git fetch + log script
 
 ### Changed
