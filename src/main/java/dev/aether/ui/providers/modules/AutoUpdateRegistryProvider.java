@@ -1,7 +1,6 @@
 package dev.aether.ui;
 
-import dev.aether.config.AetherConfig;
-import dev.aether.update.AutoUpdateInstaller;
+import dev.aether.update.UpdateChecker;
 import dev.aether.ui.settings.InfoSetting;
 import dev.aether.ui.settings.ModulesTab;
 import dev.aether.ui.settings.SettingGroup;
@@ -15,26 +14,25 @@ public final class AutoUpdateRegistryProvider extends AbstractMiningRegistryProv
 
     @Override
     protected ModulesTab.SubTab createSubTab() {
-        SettingGroup autoUpdate = SettingGroup.of(
-                "Auto Update",
-                "Fetches and installs the newest GitHub release automatically",
-                () -> AetherConfig.AUTO_UPDATE.get(),
-                v -> {
-                    AetherConfig.AUTO_UPDATE.set(v);
-                    AetherConfig.save();
-                    if (v) {
-                        AutoUpdateInstaller.checkAndInstallLatest();
-                    }
-                })
+        SettingGroup info = SettingGroup.of(
+                "Update Check",
+                "Checks for new releases and notifies you — never installs automatically",
+                () -> true,
+                v -> {})
                 .add(new InfoSetting("Status",
-                        () -> AetherConfig.AUTO_UPDATE.get()
-                                ? AutoUpdateInstaller.getStatus()
-                                : "Disabled. Enable to automatically install the newest GitHub release.")
+                        () -> "Update check runs once per session. "
+                                + "This app does not auto-update.\n\n"
+                                + "To update: run git fetch upstream, review the diff, "
+                                + "then git merge upstream/main.\n\n"
+                                + "Latest known version: "
+                                + (UpdateChecker.getCachedLatestVersion() != null
+                                        ? UpdateChecker.getCachedLatestVersion()
+                                        : "(not yet checked)"))
                         .multiline());
 
         return MainGUIRegistry.subTab(
-                "Auto Update",
-                "Fetches and installs the newest GitHub release automatically",
-                List.of(autoUpdate));
+                "Update Check",
+                "Checks for new releases and notifies you — never installs automatically",
+                List.of(info));
     }
 }

@@ -24,8 +24,8 @@ import java.util.concurrent.CompletableFuture;
 
 public final class UpdateChecker {
     private static final String MOD_ID = "aether";
-    private static final String API_URL = "https://api.github.com/repos/mizly/aether/releases/latest";
-    private static final String RELEASES_URL = "https://github.com/mizly/aether/releases/latest";
+    private static final String API_URL = "https://api.github.com/repos/marzeliousznr/aether-personal/releases/latest";
+    private static final String RELEASES_URL = "https://github.com/marzeliousznr/aether-personal/releases/latest";
     private static final int TIMEOUT_MS = 8_000;
 
     private static volatile String cachedLatestVersion;
