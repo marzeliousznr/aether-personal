@@ -21,4 +21,5 @@ mappings/
 .gradle/tools/
 CLAUDE.md
 UPDATES.MD
+md/
 .claude/
