@@ -140,8 +140,8 @@ public class BookCombineManager {
 
     private static boolean isPriorityEventActive(Minecraft client) {
         return dev.aether.macro.MacroStateManager.getCurrentState() != dev.aether.macro.MacroState.State.FARMING
-                || PestManager.isCleaningInProgress
-                || PestPrepSwapManager.prepSwappedForCurrentPestCycle
+                || PestManager.isCleaningInProgress()
+                || PestPrepSwapManager.wasPrepSwappedForCurrentCycle()
                 || (AetherConfig.AUTO_VISITOR.get() && VisitorManager.getVisitorCount(client) >= AetherConfig.VISITOR_THRESHOLD.get())
                 || LoadoutManager.isSwappingLoadout
                 || AutoSellManager.isSelling
@@ -207,7 +207,7 @@ public class BookCombineManager {
                     return;
                 }
                 ClientUtils.sendDebugMessage("Disabling farming macro: Preparing book combine");
-                client.execute(() -> dev.aether.macro.FarmingMacroManager.disable(client));
+                client.execute(() -> dev.aether.macro.farming.FarmingMacroManager.disable(client));
 
                 MacroWorkerThread.sleep(400); // Stabilization delay
                 
@@ -263,7 +263,7 @@ public class BookCombineManager {
                     return;
 
                 ClientUtils.sendDebugMessage("Restarting farming macro after book combine");
-                client.execute(() -> dev.aether.macro.FarmingMacroManager.enable(client, dev.aether.macro.FarmingMacroManager.createMacroFromConfig()));
+                client.execute(() -> dev.aether.macro.farming.FarmingMacroManager.enable(client, dev.aether.macro.farming.FarmingMacroManager.createMacroFromConfig()));
             });
         }
     }

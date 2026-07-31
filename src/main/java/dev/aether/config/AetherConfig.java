@@ -340,12 +340,10 @@ public final class AetherConfig {
         private static boolean migrateLegacyLoadoutKeys(JsonObject root) {
                 boolean updated = false;
 
-                if (!root.has("autoLoadoutPest") && root.has("autoWardrobePest")) {
-                        AUTO_LOADOUT_PEST.set(readBoolean(root, "autoWardrobePest", AUTO_LOADOUT_PEST.get()));
-                        updated = true;
-                }
-                if (!root.has("autoLoadoutVisitor") && root.has("autoWardrobeVisitor")) {
-                        AUTO_LOADOUT_VISITOR.set(readBoolean(root, "autoWardrobeVisitor", AUTO_LOADOUT_VISITOR.get()));
+                // Loadout swapping is determined solely by the configured slots. Remove
+                // retired enable flags when rewriting legacy configs.
+                if (root.has("autoLoadoutPest") || root.has("autoLoadoutVisitor")
+                                || root.has("autoWardrobePest") || root.has("autoWardrobeVisitor")) {
                         updated = true;
                 }
                 if (!root.has("loadoutSlotFarming") && root.has("wardrobeSlotFarming")) {
@@ -423,6 +421,13 @@ public final class AetherConfig {
         public static final IntEntry PEST_CHAT_TRIGGER_DELAY_MAX = Config.integer("pestChatTriggerDelayMax", 3000)
                         .range(0, 5000);
         public static final BooleanEntry DELAY_PEST_FOR_CROP_FEVER = Config.bool("delayPestForCropFever", false);
+        public static final BooleanEntry PEST_ON_TRACK_ENABLED = Config.bool("pestOnTrackEnabled", false);
+        // start: farmhelper ish pest on track
+        public static final IntEntry PEST_ON_THE_TRACK_FOV = Config.integer("pestOnTheTrackFov", 360).range(1, 360);
+        public static final IntEntry PEST_ON_THE_TRACK_ACQUIRE_DELAY_MS = Config.integer("pestOnTheTrackAcquireDelayMs", 750).range(0, 2000);
+        public static final IntEntry PEST_ON_THE_TRACK_STUCK_TIMEOUT_MS = Config.integer("pestOnTheTrackStuckTimeoutMs", 5000).range(4000, 25000);
+        public static final BooleanEntry PEST_ON_THE_TRACK_SKIP_JACOB = Config.bool("pestOnTheTrackSkipJacob", true);
+        // end: farmhelper ish on track
         public static final BooleanEntry PEST_PLOT_TP_FOR_CURRENT_PLOT = Config.bool("pestPlotTpForCurrentPlot", false);
         public static final BooleanEntry ENABLE_PEST_TRAPS = Config.bool("enablePestTraps", false);
         public static final StringEntry PEST_TRAPS_PLOT = Config.string("pestTrapsPlot", "0");
@@ -442,11 +447,6 @@ public final class AetherConfig {
         public static final ListEntry<String> LEAVE_ONE_PEST_PLOTS = Config.list("leaveOnePestPlots",
                         Collections.emptyList(), String.class);
         public static final BooleanEntry SUNSET_PESTS = Config.bool("sunsetPests", false);
-        public static final BooleanEntry PEST_DISCO_DESTINATION_MODE = Config.bool("pestDiscoDestinationMode", false);
-        public static final StringEntry PEST_DISCO_DESTINATION_PLOT = Config.string("pestDiscoDestinationPlot", "0");
-        public static final BooleanEntry PEST_DISCOLESS_MODE = Config.bool("pestDiscolessMode", false);
-        public static final ListEntry<String> PEST_DISCOLESS_PLOT = Config.list("Discoless plot", 
-                        Arrays.asList("0"), String.class);
         public static final BooleanEntry PEST_AOTV_BETWEEN = Config.bool("pestAotvBetween", false);
         public static final BooleanEntry PEST_AOTV_CONFIRM_BETWEEN = Config.bool("pestAotvConfirmBetween", false);
         public static final IntEntry PEST_AOTV_DELAY_MIN = Config.integer("pestAotvDelayMin", 150).range(100, 250);
@@ -524,8 +524,6 @@ public final class AetherConfig {
 
         // -- AUTO LOADOUT ----------------------------------------------------------
 
-        public static final BooleanEntry AUTO_LOADOUT_PEST = Config.bool("autoLoadoutPest", false);
-        public static final BooleanEntry AUTO_LOADOUT_VISITOR = Config.bool("autoLoadoutVisitor", false);
         public static final IntEntry LOADOUT_SLOT_FARMING = Config.integer("loadoutSlotFarming", 1).range(1, 12);
         public static final IntEntry LOADOUT_SLOT_PEST = Config.integer("loadoutSlotPest", 2).range(1, 12);
         public static final IntEntry LOADOUT_SLOT_PEST_KILL = Config.integer("loadoutSlotPestKill", 1).range(1, 12);
@@ -847,11 +845,6 @@ public final class AetherConfig {
         public static final ListEntry<String> MACRO_FARM_WAYPOINTS = Config.list("macroFarmWaypoints",
                         Collections.emptyList(), String.class);
         public static final StringEntry BEDROCK_PLOT_MAKER_PLOT = Config.string("bedrockPlotMakerPlot", "1");
-        /** Rotate after landing from a lower farm layer. */
-        public static final BooleanEntry MACRO_ROTATE_ON_DROP = Config.bool("macroRotateOnDrop", false);
-        /** Yaw delta applied after landing from a lower farm layer. */
-        public static final IntEntry MACRO_DROP_ROTATION_DEGREES = Config.integer("macroDropRotationDegrees", 180)
-                        .range(-180, 180);
         /** Post lane-switch delay in milliseconds before evaluating row-end checks again. */
         public static final IntEntry MACRO_LANE_SWITCH_DELAY_MIN = Config.integer("macroLaneSwitchDelayMin", 0)
                         .range(0, 1000);
@@ -996,6 +989,13 @@ public final class AetherConfig {
         public static final BooleanEntry PIP_START_FLOATING = Config.bool("pipStartFloating", true);
         public static final BooleanEntry PIP_START_DECORATED = Config.bool("pipStartDecorated", true);
         public static final BooleanEntry PIP_ENABLE_ZOOM = Config.bool("pipEnableZoom", true);
+
+        // -- PEST ESP -------------------------------------------------------------
+        public static final BooleanEntry PEST_ESP_ENABLED = Config.bool("pestEspEnabled", false);
+        public static final BooleanEntry PEST_ESP_HIGHLIGHT = Config.bool("pestEspHighlight", true);
+        public static final IntEntry PEST_ESP_HIGHLIGHT_COLOR = Config.integer("pestEspHighlightColor", 0xFFFF3030);
+        public static final BooleanEntry PEST_ESP_TRACER = Config.bool("pestEspTracer", true);
+        public static final IntEntry PEST_ESP_TRACER_COLOR = Config.integer("pestEspTracerColor", 0xFFFF3030);
 
         // -- GREENHOUSE ------------------------------------------------------------
         public static final BooleanEntry AUTO_GREENHOUSE = Config.bool("autoGreenhouse", false);

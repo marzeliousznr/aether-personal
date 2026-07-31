@@ -10,7 +10,7 @@ import java.util.regex.Pattern;
 import dev.aether.macro.MacroState;
 import dev.aether.macro.MacroStateManager;
 import dev.aether.macro.MacroWorkerThread;
-import dev.aether.macro.FarmingMacroManager;
+import dev.aether.macro.farming.FarmingMacroManager;
 import dev.aether.util.CommandUtils;
 import dev.aether.util.ClientUtils;
 
@@ -91,7 +91,7 @@ public class VisitorManager {
                 ClientUtils.sendDebugMessage("Warping to garden...");
                 CommandUtils.warpGarden();
                 VisitorsMacro.reenableCompactorsIfPending(client);
-                PestReturnManager.isReturningFromPestVisitor = true;
+        PestReturnManager.setReturningFromPestVisitor(true);
                 if (MacroWorkerThread.shouldAbortTask(client))
                     return;
                 ClientUtils.sendDebugMessage("Finalizing return to farm...");
@@ -149,11 +149,11 @@ public class VisitorManager {
         ClientUtils.waitForGearAndGui();
 
         ClientUtils.waitForGearAndGui();
-        PestReturnManager.isReturningFromPestVisitor = false;
-        PestReturnManager.isReturnToLocationActive = false;
+        PestReturnManager.setReturningFromPestVisitor(false);
+        PestReturnManager.setReturnToLocationActive(false);
         restartFarmingAfterVisitors(client);
-        PestPrepSwapManager.prepSwappedForCurrentPestCycle = false;
-        PestManager.isCleaningInProgress = false;
+        PestPrepSwapManager.clearCycleState();
+        PestManager.setCleaningInProgress(false);
     }
 
     private static void restartFarmingAfterVisitors(Minecraft client) {

@@ -1,6 +1,6 @@
 package dev.aether.modules.gear.helpers;
 
-import dev.aether.macro.FarmingMacroManager;
+import dev.aether.macro.farming.FarmingMacroManager;
 import dev.aether.macro.MacroState;
 import dev.aether.macro.MacroStateManager;
 import dev.aether.macro.MacroWorkerThread;
@@ -224,7 +224,7 @@ public class LoadoutManager {
             MacroStateManager.setCurrentState(MacroState.State.FARMING);
         }
 
-        if (PestManager.isCleaningInProgress) {
+        if (PestManager.isCleaningInProgress()) {
             ClientUtils.sendMessage("\u00A7aLoadout swap finished. Cleaning in progress, skipping restart.", true);
             return;
         }
@@ -240,7 +240,7 @@ public class LoadoutManager {
             if (MacroWorkerThread.shouldAbortTask(client, MacroState.State.FARMING)) {
                 return;
             }
-            if (PestManager.isCleaningInProgress) {
+            if (PestManager.isCleaningInProgress()) {
                 return;
             }
             if (AutoPestExchangeManager.shouldBlockFarmingResume()) {

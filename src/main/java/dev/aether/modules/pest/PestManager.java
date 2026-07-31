@@ -7,32 +7,29 @@ import dev.aether.macro.MacroStateManager;
 import dev.aether.modules.pest.helpers.PestAotvManager;
 import dev.aether.modules.pest.helpers.AutoPestExchangeManager;
 import dev.aether.modules.pest.helpers.PestBonusManager;
-import dev.aether.modules.pest.helpers.PestCleaningSequencer;
-import dev.aether.modules.pest.helpers.PestDiscoDestinationManager;
+import dev.aether.modules.pest.helpers.PestPlotId;
+import dev.aether.modules.pest.helpers.PestLifecycleManager;
+import dev.aether.modules.pest.helpers.PestOnTheTrackManager;
 import dev.aether.modules.pest.helpers.PestDestroyer;
 import dev.aether.modules.pest.helpers.PestReturnManager;
 import dev.aether.modules.GreenhouseManager;
 import dev.aether.modules.CropFeverManager;
 import dev.aether.modules.gear.helpers.LoadoutManager;
 import dev.aether.util.ClientUtils;
-import dev.aether.util.TablistUtils;
 
 import net.minecraft.client.Minecraft;
 
 import java.util.LinkedHashSet;
-import java.util.List;
 import java.util.Set;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 import dev.aether.modules.pest.helpers.PestPrepSwapManager;
 import dev.aether.modules.visitor.VisitorsMacro;
 
 public class PestManager {
     // Shared state
-    public static volatile boolean isCleaningInProgress = false;
-    public static volatile String currentInfestedPlot = null;
-    public static volatile Set<String> currentInfestedPlots = new LinkedHashSet<>();
-    public static volatile int currentPestSessionId = 0;
+    private static volatile boolean isCleaningInProgress = false;
+    private static volatile String currentInfestedPlot = null;
+    private static volatile Set<String> currentInfestedPlots = Set.of();
+    private static volatile int currentPestSessionId = 0;
     private static final long PEST_REENTRY_COOLDOWN_MS = 30_000;
     private static long lastZeroPestTime = 0;
     private static volatile int predictedAliveCount = 0;
@@ -47,7 +44,31 @@ public class PestManager {
     private static final long CLEANING_STALL_TIMEOUT_MS = 30_000;
     private static int cachedTabTick = Integer.MIN_VALUE;
     private static int cachedTabConnectionId = 0;
-    private static TabListData cachedTabListData = null;
+    private static PestTabSnapshot cachedTabListData = null;
+
+    public static boolean isCleaningInProgress() {
+        return isCleaningInProgress;
+    }
+
+    public static void setCleaningInProgress(boolean cleaning) {
+        isCleaningInProgress = cleaning;
+    }
+
+    public static String getCurrentInfestedPlot() {
+        return currentInfestedPlot;
+    }
+
+    public static Set<String> getCurrentInfestedPlots() {
+        return currentInfestedPlots;
+    }
+
+    public static void setCurrentInfestedPlots(Set<String> plots) {
+        currentInfestedPlots = java.util.Collections.unmodifiableSet(new LinkedHashSet<>(plots));
+    }
+
+    public static int getCurrentPestSessionId() {
+        return currentPestSessionId;
+    }
     private static boolean isThresholdMet(int aliveCount) {
         return aliveCount >= AetherConfig.PEST_THRESHOLD.get() || aliveCount >= 8;
     }
@@ -77,9 +98,10 @@ public class PestManager {
                 || isCleaningInProgress
                 || isPestReentryCooldownActive()
                 || PestDestroyer.isActive()
+                || PestOnTheTrackManager.getInstance().isNotIdle()
                 || ManualPestManager.isActive()
-                || PestReturnManager.isFinishingInProgress
-                || PestReturnManager.isReturnToLocationActive
+                || PestReturnManager.isFinishingInProgress()
+                || PestReturnManager.isReturnToLocationActive()
                 || LoadoutManager.isSwappingLoadout) {
             return false;
         }
@@ -105,17 +127,11 @@ public class PestManager {
         }
     }
 
-    // --- Inlined from PestTabListParser ---
-    private static final Pattern PESTS_ALIVE_PATTERN = Pattern.compile("(?i)(?:Pests|Alive):?\\s*\\(?(\\d+)\\)?");
-    private static final Pattern COOLDOWN_PATTERN = Pattern
-            .compile("(?i)Cooldown:\\s*\\(?(READY|MAX\\s*PESTS?|(?:(\\d+)m)?\\s*(?:(\\d+)s)?)\\)?");
-    private static final Pattern INFESTED_PLOTS_PATTERN = Pattern.compile("(?i)Plots?:\\s*(.+)");
-
     /**
      * Parse infested plots directly from the current tab list.
      */
     public static Set<String> getInfestedPlotsFromTab(Minecraft client) {
-        return new LinkedHashSet<>(parseTabList(client).infestedPlots);
+        return new LinkedHashSet<>(parseTabList(client).infestedPlots());
     }
 
     /**
@@ -128,21 +144,13 @@ public class PestManager {
         if (client == null || client.getConnection() == null || client.player == null) {
             return -1;
         }
-        return parseTabList(client).aliveCount;
+        return parseTabList(client).aliveCount();
     }
 
-    private static class TabListData {
-        int aliveCount = -1;
-        int cooldownSeconds = -1;
-        boolean bonusFound = false;
-        Set<String> infestedPlots = new LinkedHashSet<>();
-    }
-
-    private static TabListData parseTabList(Minecraft client) {
-        TabListData data = new TabListData();
-
-        if (client.getConnection() == null || client.player == null)
-            return data;
+    private static PestTabSnapshot parseTabList(Minecraft client) {
+        if (client.getConnection() == null || client.player == null) {
+            return PestTabSnapshot.empty();
+        }
 
         int tick = client.player.tickCount;
         int connectionId = System.identityHashCode(client.getConnection());
@@ -150,71 +158,17 @@ public class PestManager {
             return cachedTabListData;
         }
 
-        List<String> lines = TablistUtils.getRawTabLines(client);
-
-        for (String normalized : lines) {
-            Matcher aliveMatcher = PESTS_ALIVE_PATTERN.matcher(normalized);
-            if (aliveMatcher.find()) {
-                int found = Integer.parseInt(aliveMatcher.group(1));
-                if (found > data.aliveCount)
-                    data.aliveCount = found;
-            }
-
-            if (normalized.toUpperCase().contains("MAX PESTS")) {
-                data.aliveCount = 99;
-            }
-
-            Matcher cooldownMatcher = COOLDOWN_PATTERN.matcher(normalized);
-            if (cooldownMatcher.find()) {
-                String cdVal = cooldownMatcher.group(1).toUpperCase();
-
-                if (cdVal.contains("MAX PEST")) {
-                    data.aliveCount = 99;
-                    data.cooldownSeconds = 999;
-                } else if (cdVal.equalsIgnoreCase("READY")) {
-                    data.cooldownSeconds = 0;
-                } else {
-                    int m = 0;
-                    int s = 0;
-                    if (cooldownMatcher.group(2) != null)
-                        m = Integer.parseInt(cooldownMatcher.group(2));
-                    if (cooldownMatcher.group(3) != null)
-                        s = Integer.parseInt(cooldownMatcher.group(3));
-
-                    if (m > 0 || s > 0) {
-                        data.cooldownSeconds = (m * 60) + s;
-                    }
-                }
-            }
-
-            Matcher plotsMatcher = INFESTED_PLOTS_PATTERN.matcher(normalized);
-            if (plotsMatcher.find()) {
-                String plotList = plotsMatcher.group(1);
-                for (String part : plotList.split(",")) {
-                    String trimmed = part.trim().replaceAll("\\D", "");
-                    if (!trimmed.isEmpty()) {
-                        data.infestedPlots.add(trimmed);
-                    }
-                }
-            }
-
-            Boolean bonusInactive = PestBonusManager.parseBonusState(normalized);
-            if (bonusInactive != null) {
-                data.bonusFound = bonusInactive;
-            }
-        }
+        PestTabSnapshot data = PestTabSnapshot.read(client);
 
         cachedTabTick = tick;
         cachedTabConnectionId = connectionId;
         cachedTabListData = data;
         return data;
     }
-    // --- End inlined PestTabListParser ---
-
     public static void reset() {
         isCleaningInProgress = false;
         currentInfestedPlot = null;
-        currentInfestedPlots = new LinkedHashSet<>();
+        currentInfestedPlots = Set.of();
         lastZeroPestTime = 0;
         predictedAliveCount = 0;
         lastChatSpawnUpdateMs = 0;
@@ -230,6 +184,7 @@ public class PestManager {
         currentPestSessionId++;
 
         PestPrepSwapManager.resetState();
+        PestLifecycleManager.reset();
         PestReturnManager.resetState();
         PestAotvManager.resetState();
         PestBonusManager.resetState();
@@ -242,34 +197,34 @@ public class PestManager {
     public static void checkTabListForPests(Minecraft client, MacroState.State currentState) {
         if (client.getConnection() == null || client.player == null || !MacroStateManager.isMacroRunning())
             return;
-        boolean manualMode = AetherConfig.MANUAL_PEST_MODE.get();
         if (!isPestDestroyerEnabled())
             return;
 
         if (isCleaningInProgress
                 && currentState == MacroState.State.FARMING
                 && !PestDestroyer.isActive()
-                && !PestReturnManager.isFinishingInProgress
-                && !PestReturnManager.isReturnToLocationActive) {
+                && !PestReturnManager.isFinishingInProgress()
+                && !PestReturnManager.isReturnToLocationActive()) {
             isCleaningInProgress = false;
         }
 
-        TabListData data = parseTabList(client);
-        syncPredictedAliveFromTab(data.aliveCount);
-        int effectiveAlive = getEffectiveAliveCount(data.aliveCount);
+        PestTabSnapshot data = parseTabList(client);
+        syncPredictedAliveFromTab(data.aliveCount());
+        int effectiveAlive = getEffectiveAliveCount(data.aliveCount());
 
-        // Update bonus status
-        PestBonusManager.isBonusInactive = data.bonusFound;
+        if (data.bonusInactive() != null) {
+            PestBonusManager.setBonusInactive(data.bonusInactive());
+        }
 
         // Handle prep swap flag updates based on cooldown
-        if (data.cooldownSeconds != -1) {
-                PestPrepSwapManager.updatePrepSwapFlag(data.cooldownSeconds, isCleaningInProgress);
+        if (data.cooldownSeconds() != -1) {
+                PestPrepSwapManager.updatePrepSwapFlag(data.cooldownSeconds(), isCleaningInProgress);
 
             // Check if prep swap should be triggered
             boolean thresholdMet = isThresholdMet(effectiveAlive);
             if (!thresholdMet && PestPrepSwapManager.shouldTriggerPrepSwap(
-                    currentState, data.cooldownSeconds, isCleaningInProgress,
-                    PestReturnManager.isReturnToLocationActive)) {
+                    currentState, data.cooldownSeconds(), isCleaningInProgress,
+                    PestReturnManager.isReturnToLocationActive())) {
                 PestPrepSwapManager.triggerPrepSwap();
             }
         }
@@ -277,7 +232,9 @@ public class PestManager {
         // Failsafe: if CLEANING and 0 pests for 10s, return to farming.
         // Do not apply this during SPRAYING because spray routes can legitimately
         // travel multiple plots with 0 alive pests between spray actions.
-        if (currentState == MacroState.State.CLEANING && !GreenhouseManager.isRunning()) {
+        if (currentState == MacroState.State.CLEANING
+                && !GreenhouseManager.isRunning()
+                && !ManualPestManager.isActive()) {
             updateCleaningProgressTracker(effectiveAlive);
             if (effectiveAlive <= 0) {
                 if (lastZeroPestTime == 0) {
@@ -325,7 +282,7 @@ public class PestManager {
                 return;
             }
             // Priority: if exchange is enabled and the bonus is inactive, let exchange happen first.
-            if (AetherConfig.AUTO_PEST_EXCHANGE.get() && PestBonusManager.isBonusInactive) {
+            if (AetherConfig.AUTO_PEST_EXCHANGE.get() && PestBonusManager.isBonusInactive()) {
                 return;
             }
 
@@ -337,13 +294,11 @@ public class PestManager {
             if (effectiveAlive >= 8 && effectiveAlive < 99) {
                 ClientUtils.sendMessage("\u00A7eMax Pests (8) reached. Starting cleaning...", true);
             }
-            currentInfestedPlots = PestDiscoDestinationManager.prioritizePlots(data.infestedPlots);
-            String targetPlot = PestDiscoDestinationManager.selectPrimaryPlot(data.infestedPlots, "0");
-            ClientUtils.sendDebugMessage("[PestManager] Tab threshold met. infestedPlots=" + data.infestedPlots
+            setCurrentInfestedPlots(data.infestedPlots());
+            String targetPlot = data.infestedPlots().stream().findFirst().orElse(null);
+            ClientUtils.sendDebugMessage("[PestManager] Tab threshold met. infestedPlots=" + data.infestedPlots()
                             + " targetPlot=" + targetPlot + " currentPlot=" + ClientUtils.getCurrentPlot());
-            boolean started = manualMode
-                    ? startManualPestPause(client, effectiveAlive)
-                    : startCleaningSequence(client, targetPlot);
+            boolean started = startCleaningSequence(client, targetPlot, effectiveAlive);
             if (started) {
                 consumeRewarpTrigger();
             }
@@ -352,13 +307,13 @@ public class PestManager {
 
     public static void handlePestCleaningFinished(Minecraft client) {
         clearCleaningTriggerPending();
-        if (!PestReturnManager.isFinishingInProgress) {
+        if (!PestReturnManager.isFinishingInProgress()) {
             startPestReentryCooldown();
         }
         if (PestDestroyer.isActive()) {
             PestDestroyer.stop(client);
         }
-        PestReturnManager.handlePestCleaningFinished(client);
+        PestLifecycleManager.startPostStage(client);
     }
 
     public static void update() {
@@ -375,27 +330,31 @@ public class PestManager {
             return -1;
         }
 
-        TabListData data = parseTabList(client);
-        if (data.aliveCount < 0 && predictedAliveCount <= 0) {
+        PestTabSnapshot data = parseTabList(client);
+        if (data.aliveCount() < 0 && predictedAliveCount <= 0) {
             return -1;
         }
 
-        syncPredictedAliveFromTab(data.aliveCount);
-        return getEffectiveAliveCount(data.aliveCount);
+        syncPredictedAliveFromTab(data.aliveCount());
+        return getEffectiveAliveCount(data.aliveCount());
     }
 
     public static boolean startCleaningSequence(Minecraft client, String plot) {
-        if (AetherConfig.MANUAL_PEST_MODE.get()) {
-            return false;
-        }
+        return startCleaningSequence(client, plot, Math.max(1, getEffectiveAliveCountNow(client)));
+    }
+
+    private static boolean startCleaningSequence(Minecraft client, String plot, int pestCount) {
         if (!claimCleaningTrigger()) {
             return false;
         }
         currentInfestedPlot = plot;
         currentPestSessionId++;
         resetCleaningProgressTracker();
-        PestCleaningSequencer.startCleaningSequence(client, plot, currentInfestedPlot, currentPestSessionId);
-        return true;
+        if (PestLifecycleManager.start(client, plot, pestCount, currentPestSessionId)) {
+            return true;
+        }
+        clearCleaningTriggerPending();
+        return false;
     }
 
     public static void handlePhillipMessage(Minecraft client, String text) {
@@ -416,13 +375,13 @@ public class PestManager {
             lastChatSpawnUpdateMs = System.currentTimeMillis();
         }
 
-        TabListData data = parseTabList(client);
-        syncPredictedAliveFromTab(data.aliveCount);
-        int effectiveAlive = getEffectiveAliveCount(data.aliveCount);
+        PestTabSnapshot data = parseTabList(client);
+        syncPredictedAliveFromTab(data.aliveCount());
+        int effectiveAlive = getEffectiveAliveCount(data.aliveCount());
 
         if (!isThresholdMet(effectiveAlive)) {
             ClientUtils.sendDebugMessage("Chat pest trigger ignored: effective=" + effectiveAlive
-                            + " (chat=" + predictedAliveCount + ", tab=" + data.aliveCount
+                            + " (chat=" + predictedAliveCount + ", tab=" + data.aliveCount()
                             + ") < threshold=" + AetherConfig.PEST_THRESHOLD.get());
             return false;
         }
@@ -443,37 +402,28 @@ public class PestManager {
             return false;
         }
 
-        Set<String> candidatePlots = new LinkedHashSet<>(data.infestedPlots);
-        String normalizedRequestedPlot = PestDiscoDestinationManager.normalizePlot(requestedPlot);
-        if (PestDiscoDestinationManager.isUsablePlot(normalizedRequestedPlot)) {
+        Set<String> candidatePlots = new LinkedHashSet<>(data.infestedPlots());
+        String normalizedRequestedPlot = PestPlotId.normalize(requestedPlot);
+        if (PestPlotId.isUsable(normalizedRequestedPlot)) {
             candidatePlots.add(normalizedRequestedPlot);
         }
 
-        String targetPlot = PestDiscoDestinationManager.selectPrimaryPlot(candidatePlots, requestedPlot);
+        String targetPlot = candidatePlots.stream()
+                .findFirst()
+                .orElse(PestPlotId.isUsable(requestedPlot)
+                        ? PestPlotId.normalize(requestedPlot)
+                        : null);
 
-        currentInfestedPlots = PestDiscoDestinationManager.prioritizePlots(candidatePlots);
+        setCurrentInfestedPlots(candidatePlots);
         ClientUtils.sendDebugMessage("Chat pest trigger selecting plot " + targetPlot
-                        + " from tab=" + data.infestedPlots
+                        + " from tab=" + data.infestedPlots()
                         + ", chat=" + normalizedRequestedPlot
                         + ", ordered=" + currentInfestedPlots);
-        boolean started = AetherConfig.MANUAL_PEST_MODE.get()
-                ? startManualPestPause(client, effectiveAlive)
-                : startCleaningSequence(client, targetPlot);
+        boolean started = startCleaningSequence(client, targetPlot, effectiveAlive);
         if (started) {
             consumeRewarpTrigger();
         }
         return started;
-    }
-
-    private static boolean startManualPestPause(Minecraft client, int count) {
-        if (!claimCleaningTrigger()) {
-            return false;
-        }
-        if (ManualPestManager.startFromPestDestroyerTrigger(client, count)) {
-            return true;
-        }
-        clearCleaningTriggerPending();
-        return false;
     }
 
     public static void decrementPredictedAliveCount(Minecraft client) {
